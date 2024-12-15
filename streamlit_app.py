@@ -4,7 +4,7 @@ import openai
 from io import BytesIO
 
 # 页面配置
-st.set_page_config(page_title="文本分类分析工具", layout="wide")
+st.set_page_config(page_title="ChervonIP快速分类工具", layout="wide")
 
 # 自定义CSS样式
 st.markdown("""
@@ -46,7 +46,7 @@ def process_text_with_openai(text, classification_system, api_key):
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "你是一个文本分类专家。"},
+                {"role": "system", "content": "你是一个专利文本分类专家。"},
                 {"role": "user", "content": prompt}
             ]
         )
