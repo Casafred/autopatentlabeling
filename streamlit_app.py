@@ -46,7 +46,7 @@ def process_text_with_openai(text, classification_system, api_key):
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=[
-                {"role": "system", "content": "你是一个专利文本分类专家。"},
+                {"role": "system", "content": "你是一个电动工具领域的专利文本分类专家。"},
                 {"role": "user", "content": prompt}
             ]
         )
@@ -55,7 +55,7 @@ def process_text_with_openai(text, classification_system, api_key):
         return str(e)
 
 def main():
-    st.title("文本分类分析工具")
+    st.title("ChervonIP快速分类工具")
     
     # 创建两个主要区域
     setup_col, upload_col = st.columns(2)
