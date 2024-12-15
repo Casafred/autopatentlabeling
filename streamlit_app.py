@@ -32,8 +32,16 @@ def recursive_update(system, path, name, description):
     """递归更新分类体系"""
     parts = path.split('/')
     for part in parts[:-1]:
+        if part not in system:
+            system[part] = {'description': '', 'children': {}}  # Create missing part if necessary
         system = system[part]['children']
+    
+    # Make sure the final part exists
+    if parts[-1] not in system:
+        system[parts[-1]] = {'description': '', 'children': {}}
+    
     system[parts[-1]]['children'][name] = {"description": description, "children": {}}
+
 
 def format_classification_system(classification_system, level=1):
     """格式化分类体系供显示"""
