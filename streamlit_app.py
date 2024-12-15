@@ -142,7 +142,12 @@ def create_batch_jsonl(df, classification_system):
         }
         jsonl_content.write(json.dumps(request, ensure_ascii=False) + '\n')
     
-    return jsonl_content.getvalue()
+    # Ensure the temporary file has the .jsonl extension
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".jsonl") as temp_file:
+        temp_file.write(jsonl_content.getvalue().encode('utf-8'))
+        temp_file_path = temp_file.name
+    
+    return temp_file_path
 
 def main():
     st.title("ChervonIP专利数据库分类工具")
