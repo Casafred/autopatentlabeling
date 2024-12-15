@@ -34,53 +34,63 @@ def create_classification_system():
     # 设置分类级数
     num_levels = st.number_input("设置分类级数", min_value=1, max_value=5, value=1)
     
-    def add_sublabels(parent_level, current_level, max_level):
-        """递归添加子标签"""
+    def create_level_structure(current_level, max_level, parent_path=""):
+        """创建每一级的分类结构"""
         if current_level > max_level:
             return {}
-            
-        labels = {}
-        num_labels = st.number_input(
-            f"第{current_level}级标签数量" + (f" (在{parent_level}下)" if parent_level else ""),
-            min_value=1,
-            value=1,
-            key=f"num_labels_{current_level}_{parent_level}"
-        )
         
-        for i in range(num_labels):
-            col1, col2 = st.columns(2)
-            with col1:
-                label_name = st.text_input(
-                    f"第{current_level}级标签{i+1}名称" + (f" (在{parent_level}下)" if parent_level else ""),
-                    key=f"label_{current_level}_{parent_level}_{i}"
-                )
-            with col2:
-                description = st.text_input(
-                    f"第{current_level}级标签{i+1}描述" + (f" (在{parent_level}下)" if parent_level else ""),
-                    key=f"desc_{current_level}_{parent_level}_{i}"
-                )
-            
-            if label_name and description:
-                labels[label_name] = {
-                    "description": description,
-                    "children": add_sublabels(label_name, current_level + 1, max_level)
-                }
+        level_dict = {}
         
-        return labels
+        # 为当前级别创建一个容器
+        with st.expander(f"第{current_level}级分类" + (f" (在 {parent_path} 下)" if parent_path else "")):
+            num_categories = st.number_input(
+                f"第{current_level}级分类数量",
+                min_value=1,
+                value=1,
+                key=f"num_cat_{current_level}_{parent_path}"
+            )
+            
+            for i in range(num_categories):
+                category_container = st.container()
+                with category_container:
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        category_name = st.text_input(
+                            f"分类名称 {i+1}",
+                            key=f"cat_name_{current_level}_{parent_path}_{i}"
+                        )
+                    with col2:
+                        category_desc = st.text_input(
+                            f"分类描述 {i+1}",
+                            key=f"cat_desc_{current_level}_{parent_path}_{i}"
+                        )
+                    
+                    if category_name and category_desc:
+                        current_path = f"{parent_path}/{category_name}" if parent_path else category_name
+                        level_dict[category_name] = {
+                            "description": category_desc,
+                            "children": create_level_structure(
+                                current_level + 1,
+                                max_level,
+                                current_path
+                            )
+                        }
+        
+        return level_dict
     
-    # 从第一级开始递归创建分类体系
-    classification_system = add_sublabels("", 1, num_levels)
-    
-    return classification_system
+    # 从第一级开始创建整个分类体系
+    return create_level_structure(1, num_levels)
 
 def format_classification_system(system_dict, level=1, prefix=""):
-    """格式化分类体系为字符串"""
+    """格式化分类体系为字符串，生成树状结构"""
     result = []
     for label, data in system_dict.items():
         indent = "  " * (level - 1)
-        result.append(f"{indent}第{level}级分类 - {label}：{data['description']}")
+        branch = "├─ " if level > 1 else ""
+        result.append(f"{indent}{branch}{label}：{data['description']}")
         if data['children']:
-            result.extend(format_classification_system(data['children'], level + 1, prefix + indent))
+            child_prefix = prefix + ("│  " if level > 1 else "  ")
+            result.extend(format_classification_system(data['children'], level + 1, child_prefix))
     return result
 
 def create_batch_jsonl(df, classification_system):
@@ -89,6 +99,21 @@ def create_batch_jsonl(df, classification_system):
     
     # 构建分类体系的层级描述
     system_description = "分类体系层级结构：\n" + "\n".join(format_classification_system(classification_system))
+    
+    # 构建分类路径映射
+    def build_path_mapping(system_dict, current_path=None):
+        paths = {}
+        for label, data in system_dict.items():
+            current = current_path + [label] if current_path else [label]
+            paths[label] = {
+                'path': current,
+                'description': data['description']
+            }
+            if data['children']:
+                paths.update(build_path_mapping(data['children'], current))
+        return paths
+    
+    path_mapping = build_path_mapping(classification_system)
     
     for idx, row in df.iterrows():
         request = {
@@ -101,13 +126,16 @@ def create_batch_jsonl(df, classification_system):
                     {
                         "role": "system",
                         "content": """你是一个电动工具领域专利文本分类专家。
-                        你需要对每个专利文本在每个分类层级都进行标注，并给出详细的分类理由。
-                        分类结果应该遵循层级关系，确保下级分类与上级分类相对应。"""
+                        你需要对专利文本进行多层级分类，遵循以下原则：
+                        1. 必须从第一级开始，逐级进行分类
+                        2. 每个下级分类必须属于其上级分类
+                        3. 对每个分类选择都需要给出具体理由
+                        4. 如果某个层级无法确定分类，请说明原因"""
                     },
                     {
                         "role": "user",
                         "content": f"""
-                        请根据以下多级分类体系对专利文本进行分类，需要为每个层级都选择适当的分类标签：
+                        请根据以下分类体系对专利文本进行分类：
 
                         {system_description}
                         
@@ -115,12 +143,22 @@ def create_batch_jsonl(df, classification_system):
                         
                         请以JSON格式返回，格式如下：
                         {{
-                            "classifications": [
-                                {{"level": 1, "category": "一级分类标签", "confidence": "分类确信度"}},
-                                {{"level": 2, "category": "二级分类标签", "confidence": "分类确信度"}},
+                            "classification_path": [
+                                {{
+                                    "level": 1,
+                                    "category": "一级分类名称",
+                                    "confidence": "分类确信度(0-1)",
+                                    "reason": "选择该分类的具体理由"
+                                }},
+                                {{
+                                    "level": 2,
+                                    "category": "二级分类名称",
+                                    "confidence": "分类确信度(0-1)",
+                                    "reason": "选择该分类的具体理由"
+                                }},
                                 ...
                             ],
-                            "reason": "详细的分类理由，解释为什么选择这些标签"
+                            "overall_analysis": "整体分类逻辑说明"
                         }}
                         """
                     }
