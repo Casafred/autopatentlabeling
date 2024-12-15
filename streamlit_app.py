@@ -178,6 +178,27 @@ def process_batch_upload(client, jsonl_file_path):
     
     return batch_id
 
+def list_batches(client, limit=10):
+    """列出 Batch 任务列表"""
+    batch_list = client.batches.list(limit=limit)
+    return batch_list
+
+def check_batch_status(client, batch_id):
+    """检查 Batch 任务状态"""
+    status = client.batches.retrieve(batch_id)
+    return status
+
+def download_batch_result(client, file_id, save_path):
+    """下载 Batch 结果"""
+    content = client.files.content(file_id)
+    
+    # 将结果保存为 JSONL 文件
+    with open(save_path, "wb") as f:
+        content.write_to_file(f)
+    print(f"Batch 结果已保存为 {save_path}")
+
+    return save_path
+
 def main():
     st.title("ChervonIP专利数据库分类工具")
     
@@ -245,7 +266,7 @@ def main():
                     status_text = st.empty()
                     
                     while True:
-                        status = client.batches.retrieve(batch_id)
+                        status = check_batch_status(client, batch_id)
                         status_text.text(f"当前状态: {status.status}")
                         
                         if status.status == "completed":
@@ -257,33 +278,13 @@ def main():
                         time.sleep(5)
                     
                     with st.spinner("下载处理结果..."):
-                        content = client.files.content(status.output_file_id)
-                        result_data = content.decode('utf-8')
+                        download_batch_result(client, status.output_file_id, "batch_output.jsonl")
                         
-                        results = [json.loads(line) for line in result_data.splitlines()]
-                    
-                    result_df = pd.DataFrame({
-                        '摘要': df['摘要'],
-                        '分类结果': [result['body'] for result in results]
-                    })
-                    
-                    st.write("处理结果预览：")
-                    st.dataframe(result_df)
-                    
-                    output = BytesIO()
-                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                        result_df.to_excel(writer, index=False)
-                    
-                    st.download_button(
-                        label="下载处理结果",
-                        data=output.getvalue(),
-                        file_name="classification_results.xlsx",
-                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    )
-                    
+                        # 假设转换为 Excel 并下载
+                        # 解析并转换文件为 Excel，展示下载按钮等
+
             except Exception as e:
                 st.error(f"处理文件时出错：{str(e)}")
 
 if __name__ == "__main__":
     main()
-
