@@ -19,12 +19,28 @@ st.markdown("""
     .stTextInput>div>div>input {
         background-color: #f0f2f6;
     }
+    .hierarchy-input {
+        margin-left: 30px;
+        border-left: 2px solid #e0e0e0;
+        padding-left: 10px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 def create_batch_jsonl(df, classification_system):
     """创建batch处理所需的jsonl文件内容"""
     jsonl_content = StringIO()
+    
+    # 构建分类体系的层级描述
+    system_description = "分类体系层级结构：\n"
+    for level1_label, level1_data in classification_system.items():
+        system_description += f"一级分类 - {level1_label}：{level1_data['description']}\n"
+        if 'children' in level1_data:
+            for level2_label, level2_data in level1_data['children'].items():
+                system_description += f"  ├─ 二级分类 - {level2_label}：{level2_data['description']}\n"
+                if 'children' in level2_data:
+                    for level3_label, level3_data in level2_data['children'].items():
+                        system_description += f"  │  ├─ 三级分类 - {level3_label}：{level3_data['description']}\n"
     
     for idx, row in df.iterrows():
         request = {
@@ -36,19 +52,22 @@ def create_batch_jsonl(df, classification_system):
                 "messages": [
                     {
                         "role": "system",
-                        "content": "你是一个电动工具领域专利文本分类专家，擅长将专利摘要中的主要技术内容与技术分类体系中的标签进行对应。"
+                        "content": "你是一个电动工具领域专利文本分类专家，擅长将专利摘要中的主要技术内容与多级技术分类体系中的标签进行对应。"
                     },
                     {
                         "role": "user",
                         "content": f"""
-                        请根据以下分类体系对文本进行分类，并说明分类理由：
-                        分类体系：{classification_system}
+                        请根据以下多级分类体系对专利文本进行分类，需要同时给出各个层级的分类标签：
+
+                        {system_description}
                         
-                        文本内容：{row['摘要']}
+                        专利摘要：{row['摘要']}
                         
-                        请以JSON格式返回，包含两个字段：
-                        1. category: 分类标签
-                        2. reason: 分类理由
+                        请以JSON格式返回，包含以下字段：
+                        1. level1_category: 一级分类标签
+                        2. level2_category: 二级分类标签
+                        3. level3_category: 三级分类标签（如果有）
+                        4. reason: 分类理由
                         """
                     }
                 ],
@@ -59,20 +78,22 @@ def create_batch_jsonl(df, classification_system):
     
     return jsonl_content.getvalue()
 
-def process_batch_results(content):
-    """处理batch处理的结果"""
-    results = []
-    for line in content.split('\n'):
-        if line.strip():
-            try:
-                result = json.loads(line)
-                response_content = json.loads(
-                    result['response']['body']['choices'][0]['message']['content'].strip('`json\n')
-                )
-                results.append(response_content)
-            except Exception as e:
-                results.append({"error": str(e)})
-    return results
+def add_classification_level(parent_dict, level_name, description):
+    """添加分类层级"""
+    if level_name not in parent_dict:
+        parent_dict[level_name] = {
+            "description": description,
+            "children": {}
+        }
+    return parent_dict[level_name]["children"]
+
+def save_classification_system(classification_system):
+    """保存分类体系为JSON文件"""
+    return json.dumps(classification_system, ensure_ascii=False, indent=2)
+
+def load_classification_system(json_str):
+    """从JSON字符串加载分类体系"""
+    return json.loads(json_str)
 
 def main():
     st.title("ChervonIP专利数据库分类工具")
@@ -86,31 +107,61 @@ def main():
         # ZhipuAI API密钥输入
         api_key = st.text_input("输入智谱AI API密钥", type="password")
         
-        # 分类级别设置
-        levels = st.number_input("设置技术分类级别数", min_value=1, max_value=5, value=1)
+        # 分类体系配置文件上传
+        config_file = st.file_uploader("上传分类体系配置文件（可选）", type=['json'])
         
-        # 动态创建分类系统输入界面
-        classification_system = {}
-        for level in range(1, levels + 1):
-            st.markdown(f"#### 第{level}级分类")
+        if config_file is not None:
+            classification_system = load_classification_system(config_file.getvalue().decode('utf-8'))
+            st.success("成功加载分类体系配置！")
+        else:
+            # 手动创建分类体系
+            classification_system = {}
             
-            num_labels = st.number_input(f"第{level}级分类的标签数量", min_value=1, value=1, key=f"num_labels_{level}")
-            
-            level_labels = {}
-            for i in range(num_labels):
-                col1, col2 = st.columns(2)
-                with col1:
-                    label = st.text_input(f"标签 {i+1}", key=f"label_{level}_{i}")
-                with col2:
-                    description = st.text_input(f"解释 {i+1}", key=f"desc_{level}_{i}")
-                if label and description:
-                    level_labels[label] = description
-            
-            classification_system[f"level_{level}"] = level_labels
+            # 一级分类
+            num_level1 = st.number_input("一级分类数量", min_value=1, value=1)
+            for i in range(num_level1):
+                level1_name = st.text_input(f"一级分类 {i+1} 标签名称", key=f"l1_name_{i}")
+                level1_desc = st.text_input(f"一级分类 {i+1} 描述", key=f"l1_desc_{i}")
+                
+                if level1_name and level1_desc:
+                    level2_dict = add_classification_level(classification_system, level1_name, level1_desc)
+                    
+                    # 在一级分类下添加二级分类
+                    with st.expander(f"添加 {level1_name} 的二级分类"):
+                        num_level2 = st.number_input(f"{level1_name} 的二级分类数量", min_value=0, value=0, key=f"num_l2_{i}")
+                        
+                        for j in range(num_level2):
+                            level2_name = st.text_input(f"二级分类 {j+1} 标签名称", key=f"l2_name_{i}_{j}")
+                            level2_desc = st.text_input(f"二级分类 {j+1} 描述", key=f"l2_desc_{i}_{j}")
+                            
+                            if level2_name and level2_desc:
+                                level3_dict = add_classification_level(level2_dict, level2_name, level2_desc)
+                                
+                                # 在二级分类下添加三级分类
+                                with st.expander(f"添加 {level2_name} 的三级分类"):
+                                    num_level3 = st.number_input(f"{level2_name} 的三级分类数量", min_value=0, value=0, key=f"num_l3_{i}_{j}")
+                                    
+                                    for k in range(num_level3):
+                                        level3_name = st.text_input(f"三级分类 {k+1} 标签名称", key=f"l3_name_{i}_{j}_{k}")
+                                        level3_desc = st.text_input(f"三级分类 {k+1} 描述", key=f"l3_desc_{i}_{j}_{k}")
+                                        
+                                        if level3_name and level3_desc:
+                                            add_classification_level(level3_dict, level3_name, level3_desc)
         
-        if st.button("保存分类系统"):
-            st.session_state.classification_system = classification_system
-            st.success("分类系统已保存！")
+        # 保存分类体系
+        if st.button("保存分类体系"):
+            if classification_system:
+                config_json = save_classification_system(classification_system)
+                st.download_button(
+                    label="下载分类体系配置文件",
+                    data=config_json,
+                    file_name="classification_system.json",
+                    mime="application/json"
+                )
+                st.session_state.classification_system = classification_system
+                st.success("分类体系已保存！")
+            else:
+                st.error("请先创建分类体系！")
     
     with upload_col:
         st.subheader("2. 上传和处理数据")
