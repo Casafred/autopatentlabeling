@@ -57,7 +57,7 @@ def process_text_with_openai(text, classification_system, api_key):
 def main():
     st.title("文本分类分析工具")
     
-    # 创建三个主要区域
+    # 创建两个主要区域
     setup_col, upload_col = st.columns(2)
     
     with setup_col:
@@ -105,8 +105,8 @@ def main():
                 df = pd.read_excel(uploaded_file)
                 
                 # 检查是否存在"摘要"列
-                if "摘要" not in df.columns:
-                    st.error("上传的Excel文件中没有找到"摘要"列！")
+                if '摘要' not in df.columns:
+                    st.error('上传的Excel文件中没有找到摘要列！')
                     return
                 
                 # 显示原始数据预览
@@ -126,7 +126,7 @@ def main():
                         
                         # 调用OpenAI API进行分类
                         result = process_text_with_openai(
-                            row["摘要"], 
+                            row['摘要'], 
                             st.session_state.classification_system,
                             api_key
                         )
@@ -137,8 +137,8 @@ def main():
                     
                     # 创建结果DataFrame
                     result_df = pd.DataFrame({
-                        "摘要": df["摘要"],
-                        "分类结果": results
+                        '摘要': df['摘要'],
+                        '分类结果': results
                     })
                     
                     # 保存处理结果
