@@ -152,13 +152,9 @@ def create_batch_jsonl(df, classification_system):
         temp_file_path = temp_file.name
 
     return temp_file_path
-from zhipuai import ZhipuAI
 
-def process_batch_upload(api_key, jsonl_file_path):
+def process_batch_upload(client, jsonl_file_path):
     """上传 Batch 文件并创建 Batch 任务"""
-    client = ZhipuAI(api_key=api_key)
-    
-    # 上传文件
     result = client.files.create(
         file=open(jsonl_file_path, "rb"),
         purpose="batch"
@@ -236,11 +232,14 @@ def main():
                 st.dataframe(df.head())
                 
                 if st.button("开始处理"):
+                    # 创建 ZhipuAI 客户端
+                    client = ZhipuAI(api_key=api_key)
+
                     # 生成jsonl文件路径
                     jsonl_file_path = create_batch_jsonl(df, classification_system)
                     
                     # 上传文件并创建 Batch 任务
-                    batch_id = process_batch_upload(api_key, jsonl_file_path)
+                    batch_id = process_batch_upload(client, jsonl_file_path)
                     
                     progress_bar = st.progress(0)
                     status_text = st.empty()
