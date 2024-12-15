@@ -6,7 +6,7 @@ import time
 from zhipuai import ZhipuAI
 
 # 页面配置
-st.set_page_config(page_title="文本分类分析工具", layout="wide")
+st.set_page_config(page_title="ChervonIP专利数据库分类工具", layout="wide")
 
 # 自定义CSS样式
 st.markdown("""
@@ -36,7 +36,7 @@ def create_batch_jsonl(df, classification_system):
                 "messages": [
                     {
                         "role": "system",
-                        "content": "你是一个文本分类专家。"
+                        "content": "你是一个电动工具领域专利文本分类专家，擅长将专利摘要中的主要技术内容与技术分类体系中的标签进行对应。"
                     },
                     {
                         "role": "user",
@@ -75,19 +75,19 @@ def process_batch_results(content):
     return results
 
 def main():
-    st.title("文本分类分析工具")
+    st.title("ChervonIP专利数据库分类工具")
     
     # 创建两个主要区域
     setup_col, upload_col = st.columns(2)
     
     with setup_col:
-        st.subheader("1. 设置分类系统")
+        st.subheader("1. 设置工具品类技术分类系统")
         
         # ZhipuAI API密钥输入
         api_key = st.text_input("输入智谱AI API密钥", type="password")
         
         # 分类级别设置
-        levels = st.number_input("设置分类级别数", min_value=1, max_value=5, value=1)
+        levels = st.number_input("设置技术分类级别数", min_value=1, max_value=5, value=1)
         
         # 动态创建分类系统输入界面
         classification_system = {}
