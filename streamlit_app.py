@@ -87,18 +87,20 @@ def create_classification_system():
 def create_batch_jsonl(df, classification_system):
     """创建batch处理所需的jsonl文件内容"""
     jsonl_content = StringIO()
-    
+
     system_description = "\n".join(format_classification_system(classification_system))
-    
+
     for idx, row in df.iterrows():
         if not row['摘要']:
             continue  # 跳过空摘要
+
+        # 构建符合ZhipuAI要求的jsonl请求格式
         request = {
-            "custom_id": f"request-{idx}",
+            "custom_id": f"request-{idx}",  # 每个请求必须包含唯一的 custom_id
             "method": "POST",
-            "url": "/v4/chat/completions",
+            "url": "/v4/chat/completions", 
             "body": {
-                "model": "glm-4",
+                "model": "glm-4",  # 使用特定的模型
                 "messages": [
                     {
                         "role": "system",
@@ -117,7 +119,7 @@ def create_batch_jsonl(df, classification_system):
 
                         分类体系：
                         {system_description}
-                        
+
                         专利摘要：
                         {row['摘要']}
                         
@@ -140,14 +142,45 @@ def create_batch_jsonl(df, classification_system):
                 "temperature": 0.1
             }
         }
+
+        # 将每个请求的 JSON 写入 jsonl_content
         jsonl_content.write(json.dumps(request, ensure_ascii=False) + '\n')
-    
-    # Ensure the temporary file has the .jsonl extension
+
+    # 创建临时文件并写入内容
     with tempfile.NamedTemporaryFile(delete=False, suffix=".jsonl") as temp_file:
         temp_file.write(jsonl_content.getvalue().encode('utf-8'))
         temp_file_path = temp_file.name
-    
+
     return temp_file_path
+from zhipuai import ZhipuAI
+
+def process_batch_upload(api_key, jsonl_file_path):
+    """上传 Batch 文件并创建 Batch 任务"""
+    client = ZhipuAI(api_key=api_key)
+    
+    # 上传文件
+    result = client.files.create(
+        file=open(jsonl_file_path, "rb"),
+        purpose="batch"
+    )
+    
+    file_id = result.id
+    print(f"文件上传成功，文件ID: {file_id}")
+    
+    # 创建 Batch 任务
+    create = client.batches.create(
+        input_file_id=file_id,
+        endpoint="/v4/chat/completions", 
+        auto_delete_input_file=True,
+        metadata={
+            "description": "专利分类任务"
+        }
+    )
+    
+    batch_id = create.id
+    print(f"Batch 任务创建成功，任务ID: {batch_id}")
+    
+    return batch_id
 
 def main():
     st.title("ChervonIP专利数据库分类工具")
@@ -203,28 +236,11 @@ def main():
                 st.dataframe(df.head())
                 
                 if st.button("开始处理"):
-                    client = ZhipuAI(api_key=api_key)
+                    # 生成jsonl文件路径
+                    jsonl_file_path = create_batch_jsonl(df, classification_system)
                     
-                    jsonl_content = create_batch_jsonl(df, classification_system)
-                    
-                    with tempfile.NamedTemporaryFile(delete=False) as temp_file:
-                        temp_file.write(jsonl_content.encode('utf-8'))
-                        temp_file_path = temp_file.name
-                    
-                    with st.spinner("上传文件中..."):
-                        result = client.files.create(
-                            file=open(temp_file_path, "rb"),
-                            purpose="batch"
-                        )
-                        file_id = result.id
-                    
-                    with st.spinner("创建批处理任务..."):
-                        batch_job = client.batches.create(
-                            input_file_id=file_id,
-                            endpoint="/v4/chat/completions",
-                            auto_delete_input_file=True
-                        )
-                        batch_id = batch_job.id
+                    # 上传文件并创建 Batch 任务
+                    batch_id = process_batch_upload(api_key, jsonl_file_path)
                     
                     progress_bar = st.progress(0)
                     status_text = st.empty()
